@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
 // ---------------------- Supabase Client ----------------------
@@ -6,10 +5,10 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("Supabase credentials not set in environment variables!");
-  process.exit(1);
+  console.error("❌ Supabase credentials missing!");
 }
 
+// Create Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ---------------------- Generate Explore HTML ----------------------
@@ -18,7 +17,7 @@ async function generateExploreHTML() {
 
   if (error) {
     console.error("Error fetching bots:", error.message);
-    return "<h1>Error fetching bots</h1>";
+    return `<h1 style="color:red;">Error fetching bots: ${error.message}</h1>`;
   }
 
   let botHTML = '';
@@ -35,7 +34,8 @@ async function generateExploreHTML() {
     `;
   });
 
-  return `<!DOCTYPE html>
+  return `
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -48,13 +48,22 @@ pre { background: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; }
 </head>
 <body>
 <h1>Explore Bots</h1>
-${botHTML}
+${botHTML || '<p>No bots found yet.</p>'}
 </body>
-</html>`;
+</html>
+`;
 }
 
 // ---------------------- Netlify Function Handler ----------------------
 export async function handler(event, context) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "text/plain" },
+      body: "Supabase environment variables not set."
+    };
+  }
+
   try {
     const html = await generateExploreHTML();
     return {
@@ -70,14 +79,4 @@ export async function handler(event, context) {
       body: "Error generating explore page."
     };
   }
-}
-
-// ---------------------- Local Execution ----------------------
-if (process.argv[2] === 'local') {
-  generateExploreHTML().then(html => {
-    const fs = await import('fs');
-    const path = await import('path');
-    fs.writeFileSync(path.join(process.cwd(), 'explore.html'), html);
-    console.log("explore.html generated locally!");
-  });
 }
