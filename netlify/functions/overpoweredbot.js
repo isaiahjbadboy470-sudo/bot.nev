@@ -1,8 +1,7 @@
-// overpoweredBot.js
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import readline from 'readline';
 import crypto from 'crypto';
+import readline from 'readline';
 
 // ---------------------- Supabase Client ----------------------
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -17,9 +16,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ---------------------- Helpers ----------------------
 function generateAPIKey() {
-  // Generates a 32-byte key, then encodes as base64 for compactness
   const randomBytes = crypto.randomBytes(32);
-  const timestamp = Date.now().toString(36); // adds extra uniqueness
+  const timestamp = Date.now().toString(36);
   return `${randomBytes.toString('base64url')}_${timestamp}`;
 }
 
@@ -84,11 +82,10 @@ async function listBots() {
 }
 
 // ---------------------- CLI Interface ----------------------
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
 if (process.env.CLI_MODE === "true") {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   console.log("Overpowered Bot running...");
-  console.log("Commands: !ping, !createbot <description>, !listbots, !chat <message>, !notes <add/list>");
+  console.log("Commands: !ping, !createbot <description>, !listbots");
 
   rl.on('line', async (input) => {
     const [cmd, ...args] = input.split(' ');
@@ -100,13 +97,14 @@ if (process.env.CLI_MODE === "true") {
   });
 }
 
-// ---------------------- Vercel Function Export ----------------------
-export async function handler(req, res) {
-  const { action, description, id } = req.query;
+// ---------------------- Netlify Function Handler ----------------------
+export async function handler(event, context) {
+  const query = event.queryStringParameters || {};
+  const { action, description, id } = query;
 
   if (action === 'listbots') {
     const { data: bots, error } = await supabase.from('sites').select('*');
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
 
     const safeBots = bots.map(b => ({
       name: b.name,
@@ -116,20 +114,19 @@ export async function handler(req, res) {
       botFile: b.files['bot.js'] || '// No bot file'
     }));
 
-    return res.status(200).json(safeBots);
+    return { statusCode: 200, body: JSON.stringify(safeBots) };
   }
 
-  else if (action === 'getbot' && id) {
+  if (action === 'getbot' && id) {
     const { data: bot, error } = await supabase.from('sites').select('*').eq('hash', id).single();
-    if (error || !bot) return res.status(404).json({ error: "Bot not found" });
-
-    return res.status(200).json({ ...bot, botFile: bot.files['bot.js'] || '// No bot file' });
+    if (error || !bot) return { statusCode: 404, body: JSON.stringify({ error: "Bot not found" }) };
+    return { statusCode: 200, body: JSON.stringify({ ...bot, botFile: bot.files['bot.js'] || '// No bot file' }) };
   }
 
-  else if (action === 'createbot' && description) {
+  if (action === 'createbot' && description) {
     await createBot(description);
-    return res.status(200).json({ message: "Bot created (check Supabase)" });
+    return { statusCode: 200, body: JSON.stringify({ message: "Bot created (check Supabase)" }) };
   }
 
-  else return res.status(400).json({ error: "Invalid action" });
+  return { statusCode: 400, body: JSON.stringify({ error: "Invalid action" }) };
 }
