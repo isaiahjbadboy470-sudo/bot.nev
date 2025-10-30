@@ -8,10 +8,13 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("Supabase credentials not set!");
+  console.error("❌ Missing Supabase credentials!");
+  console.error("SUPABASE_URL:", SUPABASE_URL || "(undefined)");
+  console.error("SUPABASE_KEY:", SUPABASE_KEY ? "(set)" : "(undefined)");
   process.exit(1);
 }
 
+console.log("✅ Supabase environment variables loaded.");
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ---------------------- Helpers ----------------------
@@ -52,11 +55,16 @@ console.log("Bot is ready!");`
 
 // ---------------------- Bot Actions ----------------------
 async function createBot(description) {
+  console.log("🛠️ Creating bot with description:", description);
+
   const hash = `bot_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
   const apiKey = generateAPIKey();
   const files = generateUserFiles(description, apiKey);
 
-  if (moderateContent(files)) return console.log("Bot contains harmful content. Creation aborted.");
+  if (moderateContent(files)) {
+    console.error("❌ Bot contains harmful content. Aborting.");
+    return { error: "Harmful content detected" };
+  }
 
   const newBot = {
     name: `Bot_${Date.now()}`,
@@ -64,32 +72,51 @@ async function createBot(description) {
     files,
     hash,
     created_at: new Date().toISOString(),
-    api_key: apiKey
+    api_key: apiKey,
+    improvedlast: new Date().toISOString() // Add this to match your schema
   };
 
-  const { error } = await supabase.from('sites').insert(newBot);
-  if (error) console.error("Failed to insert bot:", error.message);
-  else console.log(`Bot created successfully!\n- ID/Hash: ${hash}\n- API Key: ${apiKey}\n- File: bot.js`);
+  try {
+    const { error } = await supabase.from('sites').insert(newBot);
+
+    if (error) {
+      console.error("❌ Supabase Insert Error:");
+      console.error("Table: sites");
+      console.error("Error message:", error.message);
+      console.error("Details:", error.details || "(none)");
+      console.error("Hint:", error.hint || "(none)");
+      return { error: error.message, details: error.details, hint: error.hint };
+    }
+
+    console.log(`✅ Bot created successfully!
+    - Hash: ${hash}
+    - API Key: ${apiKey}`);
+
+    return { hash, apiKey };
+  } catch (err) {
+    console.error("🔥 Unexpected error during insert:", err);
+    return { error: err.message || "Unknown error" };
+  }
 }
 
 async function listBots() {
   const { data: bots, error } = await supabase.from('sites').select('*').limit(10);
-  if (error) return console.error("Error fetching bots:", error.message);
-  if (!bots || bots.length === 0) return console.log("No bots found.");
-
-  const list = bots.map(b => `- ${b.name} (ID: ${b.hash})`).join("\n");
-  console.log(`Bots:\n${list}`);
+  if (error) {
+    console.error("❌ Error fetching bots:", error.message);
+    return;
+  }
+  if (!bots || bots.length === 0) return console.log("ℹ️ No bots found.");
+  bots.forEach(b => console.log(`- ${b.name} (${b.hash})`));
 }
 
 // ---------------------- CLI Interface ----------------------
 if (process.env.CLI_MODE === "true") {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  console.log("Overpowered Bot running...");
+  console.log("🤖 Overpowered Bot CLI running...");
   console.log("Commands: !ping, !createbot <description>, !listbots");
 
   rl.on('line', async (input) => {
     const [cmd, ...args] = input.split(' ');
-
     if (cmd === '!ping') console.log('Pong!');
     else if (cmd === '!createbot') await createBot(args.join(' '));
     else if (cmd === '!listbots') await listBots();
@@ -98,35 +125,41 @@ if (process.env.CLI_MODE === "true") {
 }
 
 // ---------------------- Netlify Function Handler ----------------------
-export async function handler(event, context) {
-  const query = event.queryStringParameters || {};
-  const { action, description, id } = query;
+export async function handler(event) {
+  try {
+    console.log("⚡ Incoming event:", event.httpMethod, event.path);
 
-  if (action === 'listbots') {
-    const { data: bots, error } = await supabase.from('sites').select('*');
-    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    const method = event.httpMethod || 'GET';
+    const query = event.queryStringParameters || {};
+    const body = event.body ? JSON.parse(event.body) : {};
+    const action = query.action || body.action || null;
+    const description = query.description || body.description || null;
+    const id = query.id || body.id || null;
 
-    const safeBots = bots.map(b => ({
-      name: b.name,
-      description: b.description,
-      hash: b.hash,
-      api_key: b.api_key,
-      botFile: b.files['bot.js'] || '// No bot file'
-    }));
+    console.log("🧠 Action:", action, "| Description:", description, "| ID:", id);
 
-    return { statusCode: 200, body: JSON.stringify(safeBots) };
+    if (action === 'listbots') {
+      const { data: bots, error } = await supabase.from('sites').select('*');
+      if (error) throw error;
+      return { statusCode: 200, body: JSON.stringify(bots) };
+    }
+
+    if (action === 'getbot' && id) {
+      const { data: bot, error } = await supabase.from('sites').select('*').eq('hash', id).single();
+      if (error || !bot) return { statusCode: 404, body: JSON.stringify({ error: "Bot not found" }) };
+      return { statusCode: 200, body: JSON.stringify(bot) };
+    }
+
+    if (method === 'POST' && description) {
+      const result = await createBot(description);
+      if (result.error) return { statusCode: 500, body: JSON.stringify(result) };
+      return { statusCode: 200, body: JSON.stringify(result) };
+    }
+
+    return { statusCode: 400, body: JSON.stringify({ error: "Invalid action or missing description" }) };
+
+  } catch (err) {
+    console.error("🔥 Handler caught error:", err);
+    return { statusCode: 500, body: JSON.stringify({ error: err.message || "Unknown server error" }) };
   }
-
-  if (action === 'getbot' && id) {
-    const { data: bot, error } = await supabase.from('sites').select('*').eq('hash', id).single();
-    if (error || !bot) return { statusCode: 404, body: JSON.stringify({ error: "Bot not found" }) };
-    return { statusCode: 200, body: JSON.stringify({ ...bot, botFile: bot.files['bot.js'] || '// No bot file' }) };
-  }
-
-  if (action === 'createbot' && description) {
-    await createBot(description);
-    return { statusCode: 200, body: JSON.stringify({ message: "Bot created (check Supabase)" }) };
-  }
-
-  return { statusCode: 400, body: JSON.stringify({ error: "Invalid action" }) };
 }
