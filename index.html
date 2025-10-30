@@ -1,81 +1,73 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Overpowered Bot Creator</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
-    h1 { color: #333; }
-    form { margin-bottom: 20px; }
-    input, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
-    button { padding: 10px 20px; border: none; border-radius: 5px; background: #0070f3; color: white; cursor: pointer; }
-    button:hover { background: #005bb5; }
-    .output { margin-top: 20px; background: #fff; padding: 15px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .success { color: green; }
-    .error { color: red; }
-  </style>
-</head>
-<body>
-  <h1>Create Your Overpowered Bot</h1>
+<script>
+const form = document.getElementById('botForm');
+const output = document.getElementById('output');
 
-  <form id="botForm">
-    <label for="description">Bot Description:</label>
-    <textarea id="description" rows="3" placeholder="Enter bot description..."></textarea>
-    <button type="submit">Create Bot</button>
-  </form>
+// Determine correct Netlify function paths
+const createBotPath = window.location.hostname.includes('localhost')
+  ? '/netlify/functions/overpoweredbot'
+  : '/.netlify/functions/overpoweredbot';
 
-  <div class="output" id="output"></div>
+const generateExplorePath = window.location.hostname.includes('localhost')
+  ? '/netlify/functions/generateExplore'
+  : '/.netlify/functions/generateExplore';
 
-  <script>
-    const form = document.getElementById('botForm');
-    const output = document.getElementById('output');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const description = document.getElementById('description').value.trim();
 
-    // Determine correct Netlify function path
-    const functionPath = window.location.hostname.includes('localhost')
-      ? '/netlify/functions/overpoweredbot'   // local dev
-      : '/.netlify/functions/overpoweredbot';  // production
+  if (!description) {
+    output.textContent = 'Please enter a description.';
+    output.className = 'output error';
+    return;
+  }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const description = document.getElementById('description').value.trim();
+  output.textContent = 'Creating bot...';
+  output.className = 'output';
 
-      if (!description) {
-        output.textContent = 'Please enter a description.';
-        output.className = 'output error';
-        return;
-      }
-
-      output.textContent = 'Creating bot...';
-      output.className = 'output';
-
-      try {
-        const res = await fetch(functionPath, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          output.innerHTML = `
-            <strong>Bot Created Successfully!</strong><br>
-            ID/Hash: ${data.hash || 'N/A'}<br>
-            API Key: ${data.apiKey || 'Check Supabase'}<br>
-            File: bot.js
-          `;
-          output.className = 'output success';
-          form.reset();
-        } else {
-          output.textContent = `Error: ${data.error || 'Unknown error'}`;
-          output.className = 'output error';
-        }
-      } catch (err) {
-        console.error(err);
-        output.textContent = 'Failed to create bot.';
-        output.className = 'output error';
-      }
+  try {
+    // Step 1: Create the bot
+    const res = await fetch(createBotPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description })
     });
-  </script>
-</body>
-</html>
+
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      output.textContent = `Error creating bot: ${data.error || 'Unknown error'}`;
+      output.className = 'output error';
+      return;
+    }
+
+    // Step 2: Regenerate explore.html
+    output.textContent = 'Generating Explore page...';
+    const exploreRes = await fetch(generateExplorePath, { method: 'POST' });
+    const exploreData = await exploreRes.text(); // we can ignore content, just trigger generation
+
+    if (!exploreRes.ok) {
+      console.warn("⚠️ Explore page generation failed.");
+    }
+
+    // Step 3: Success
+    output.innerHTML = `
+      <strong>Bot Created Successfully!</strong><br>
+      ID/Hash: ${data.hash || 'N/A'}<br>
+      API Key: ${data.apiKey || 'Check Supabase'}<br>
+      File: bot.js
+    `;
+    output.className = 'output success';
+    form.reset();
+
+    // Optional: Redirect to Explore page after creation
+    setTimeout(() => {
+      window.location.href = '/explore.html'; // make sure this matches your deployed path
+    }, 1000);
+
+  } catch (err) {
+    console.error(err);
+    output.textContent = 'Failed to create bot.';
+    output.className = 'output error';
+  }
+});
+</script>
