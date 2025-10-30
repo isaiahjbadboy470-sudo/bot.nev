@@ -12,62 +12,32 @@ pre { background: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; }
 <body>
 <h1>Explore Bots</h1>
 
-    <div class="bot">
-      <h2>Bot_1761788504932</h2>
-      <p>My first custom bot</p>
-      <pre>// No bot file</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Bot_1761788714057</h2>
-      <p>My first functional test bot</p>
-      <pre>// Auto-generated bot based on user description
-const API_KEY = "e59a8daab1a8bc485c521a8f6983171a";
-const description = "My first functional test bot";
+<div id="bots-container">Loading bots...</div>
 
-function respond(message) {
-    // Simple bot logic: echo + description
-    return "You said: '" + message + "'. " + description;
+<script>
+// Determine the function path
+const functionPath = window.location.hostname.includes('localhost')
+  ? '/netlify/functions/generateExplore'
+  : '/.netlify/functions/generateExplore';
+
+async function fetchBots() {
+  const container = document.getElementById('bots-container');
+  container.innerHTML = 'Loading bots...';
+
+  try {
+    const res = await fetch(functionPath);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+    const html = await res.text(); // your function returns full HTML
+    container.innerHTML = html;
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<p style="color:red;">Failed to load bots: ${err.message}</p>`;
+  }
 }
 
-// Example: listen for messages (Node.js)
-process.stdin.on('data', (data) => {
-    const msg = data.toString().trim();
-    console.log("[Bot Reply]: " + respond(msg));
-});
-
-console.log("Bot is ready! Use process.stdin to send messages.");</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Server_1761784548911</h2>
-      <p>dude</p>
-      <pre>// No bot file</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Test Server</h2>
-      <p>Test description</p>
-      <pre>// No bot file</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Server_1761782080037</h2>
-      <p>dude</p>
-      <pre>// No bot file</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Server_1761785070331</h2>
-      <p>dude</p>
-      <pre>// No bot file</pre>
-    </div>
-    
-    <div class="bot">
-      <h2>Bot_1761788357781</h2>
-      <p>My first test bot</p>
-      <pre>// No bot file</pre>
-    </div>
-    
+// Fetch bots on page load
+window.addEventListener('DOMContentLoaded', fetchBots);
+</script>
 </body>
 </html>
