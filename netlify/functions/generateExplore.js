@@ -1,15 +1,12 @@
-// generateExplore.js
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
 
 // ---------------------- Supabase Client ----------------------
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error("Supabase credentials not set in .env!");
+  console.error("Supabase credentials not set in environment variables!");
   process.exit(1);
 }
 
@@ -21,12 +18,12 @@ async function generateExploreHTML() {
 
   if (error) {
     console.error("Error fetching bots:", error.message);
-    return [];
+    return "<h1>Error fetching bots</h1>";
   }
 
   let botHTML = '';
   bots.forEach((bot) => {
-    const filesObj = bot.files || {}; // already an object
+    const filesObj = bot.files || {};
     const botFile = filesObj['bot.js'] || '// No bot file';
 
     botHTML += `
@@ -38,7 +35,7 @@ async function generateExploreHTML() {
     `;
   });
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -54,27 +51,33 @@ pre { background: #eee; padding: 10px; border-radius: 5px; overflow-x: auto; }
 ${botHTML}
 </body>
 </html>`;
-
-  // Write locally for testing
-  fs.writeFileSync(path.join(process.cwd(), 'explore.html'), html);
-  console.log("explore.html generated successfully!");
-
-  return html;
 }
 
-// ---------------------- Vercel Serverless Handler ----------------------
-export async function handler(req, res) {
+// ---------------------- Netlify Function Handler ----------------------
+export async function handler(event, context) {
   try {
     const html = await generateExploreHTML();
-    res.setHeader('Content-Type', 'text/html');
-    res.status(200).send(html);
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "text/html" },
+      body: html
+    };
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error generating explore page.");
+    return {
+      statusCode: 500,
+      headers: { "Content-Type": "text/plain" },
+      body: "Error generating explore page."
+    };
   }
 }
 
 // ---------------------- Local Execution ----------------------
 if (process.argv[2] === 'local') {
-  generateExploreHTML();
+  generateExploreHTML().then(html => {
+    const fs = await import('fs');
+    const path = await import('path');
+    fs.writeFileSync(path.join(process.cwd(), 'explore.html'), html);
+    console.log("explore.html generated locally!");
+  });
 }
