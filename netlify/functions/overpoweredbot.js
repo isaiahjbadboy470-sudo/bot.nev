@@ -66,31 +66,26 @@ async function createBot(description) {
     return { error: "Harmful content detected" };
   }
 
+  // Only insert essential columns
   const newBot = {
     name: `Bot_${Date.now()}`,
     description,
     files,
     hash,
     created_at: new Date().toISOString(),
-    api_key: apiKey,
-    improvedlast: new Date().toISOString() // Add this to match your schema
+    api_key: apiKey
   };
 
   try {
     const { error } = await supabase.from('sites').insert(newBot);
-
     if (error) {
-      console.error("❌ Supabase Insert Error:");
-      console.error("Table: sites");
-      console.error("Error message:", error.message);
-      console.error("Details:", error.details || "(none)");
-      console.error("Hint:", error.hint || "(none)");
+      console.error("❌ Supabase Insert Error:", error.message);
       return { error: error.message, details: error.details, hint: error.hint };
     }
 
     console.log(`✅ Bot created successfully!
-    - Hash: ${hash}
-    - API Key: ${apiKey}`);
+- Hash: ${hash}
+- API Key: ${apiKey}`);
 
     return { hash, apiKey };
   } catch (err) {
@@ -103,10 +98,9 @@ async function listBots() {
   const { data: bots, error } = await supabase.from('sites').select('*').limit(10);
   if (error) {
     console.error("❌ Error fetching bots:", error.message);
-    return;
+    return [];
   }
-  if (!bots || bots.length === 0) return console.log("ℹ️ No bots found.");
-  bots.forEach(b => console.log(`- ${b.name} (${b.hash})`));
+  return bots || [];
 }
 
 // ---------------------- CLI Interface ----------------------
@@ -119,7 +113,7 @@ if (process.env.CLI_MODE === "true") {
     const [cmd, ...args] = input.split(' ');
     if (cmd === '!ping') console.log('Pong!');
     else if (cmd === '!createbot') await createBot(args.join(' '));
-    else if (cmd === '!listbots') await listBots();
+    else if (cmd === '!listbots') console.log(await listBots());
     else console.log('Unknown command.');
   });
 }
@@ -139,8 +133,7 @@ export async function handler(event) {
     console.log("🧠 Action:", action, "| Description:", description, "| ID:", id);
 
     if (action === 'listbots') {
-      const { data: bots, error } = await supabase.from('sites').select('*');
-      if (error) throw error;
+      const bots = await listBots();
       return { statusCode: 200, body: JSON.stringify(bots) };
     }
 
@@ -157,7 +150,6 @@ export async function handler(event) {
     }
 
     return { statusCode: 400, body: JSON.stringify({ error: "Invalid action or missing description" }) };
-
   } catch (err) {
     console.error("🔥 Handler caught error:", err);
     return { statusCode: 500, body: JSON.stringify({ error: err.message || "Unknown server error" }) };
